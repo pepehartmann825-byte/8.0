@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comic Social App</title>
+
+<style>
+body{
+margin:0;
+font-family:system-ui, Arial;
+background:linear-gradient(180deg,#0b0f14,#0a0a0a);
+color:white;
+}
+
+.nav{
+display:flex;
+background:#0f172a;
+padding:10px;
+position:sticky;
+top:0;
+}
+
+.nav button{
+flex:1;
+padding:14px;
+border:none;
+background:none;
+color:#94a3b8;
+font-size:16px;
+}
+
+.nav button.active{
+color:#22c55e;
+}
+
+.screen{
+display:none;
+padding:18px;
+}
+
+.screen.active{
+display:block;
+}
+
+.card{
+background:rgba(17,24,39,0.85);
+margin:12px 0;
+padding:16px;
+border-radius:16px;
+border:1px solid rgba(255,255,255,0.05);
+cursor:pointer;
+}
+
+button{
+padding:8px 12px;
+margin-top:8px;
+border:none;
+border-radius:10px;
+background:#1f2937;
+color:white;
+cursor:pointer;
+}
+
+button:hover{
+background:#374151;
+}
+
+p{opacity:0.85;}
+</style>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+</head>
+
+<body>
+
+<div class="nav">
+<button onclick="show('home',this)" class="active">🏠</button>
+<button onclick="show('collection',this)">📚</button>
+<button onclick="show('profile',this)">👤</button>
+</div>
+
+<!-- HOME -->
+<div id="home" class="screen active">
+<h2>📚 Feed</h2>
+<div id="feed">Loading...</div>
+</div>
+
+<!-- COLLECTION -->
+<div id="collection" class="screen">
+<h2>📖 Sammlung</h2>
+<div id="collectionList"></div>
+</div>
+
+<!-- PROFILE -->
+<div id="profile" class="screen">
+<h2>👤 Login</h2>
+
+<button onclick="login()">🔐 Google Login</button>
+<p id="status">Offline</p>
+
+<div id="admin" style="display:none">
+<h3>🧑‍💻 Admin Panel</h3>
+<input id="title" placeholder="Titel">
+<input id="pages" placeholder="Seiten">
+<button onclick="addComic()">➕ Hinzufügen</button>
+</div>
+
+</div>
+
+<script>
+
+/* 🔥 FIREBASE */
+const firebaseConfig = {
+  apiKey: "AIzaSyD7rATqBEgOi1BMK9kI0Qr5ro825vINx_A",
+  authDomain: "comic-tracker-11dce.firebaseapp.com",
+  projectId: "comic-tracker-11dce",
+  storageBucket: "comic-tracker-11dce.firebasestorage.app",
+  messagingSenderId: "353269603215",
+  appId: "1:353269603215:web:6594986b906d838f0149fa"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.firestore();
+const auth = firebase.auth();
+const provider = new firebase.auth.GoogleAuthProvider();
+
+let user = null;
+let comics = [];
+let collection = [];
+let likes = [];
+let selectedComic = null;
+
+const ADMIN = "pepehartmann825@gmail.com";
+
+/* NAV */
+function show(id,btn){
+document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+document.getElementById(id).classList.add("active");
+
+document.querySelectorAll(".nav button").forEach(b=>b.classList.remove("active"));
+btn.classList.add("active");
+}
+
+/* LOGIN */
+function login(){
+auth.signInWithPopup(provider)
+.then(res=>{
+user = res.user.email;
+
+document.getElementById("status").innerText = user;
+
+if(user === ADMIN){
+document.getElementById("admin").style.display = "block";
+}
+
+load();
+loadUserCollection();
+loadLikes();
+})
+.catch(err=>alert(err.message));
+}
+
+/* AUTO LOGIN */
+auth.onAuthStateChanged(u=>{
+if(u){
+user = u.email;
+
+document.getElementById("status").innerText = user;
+
+if(user === ADMIN){
+document.getElementById("admin").style.display = "block";
+}
+
+load();
+loadUserCollection();
+loadLikes();
+}
+});
+
+/* ADD COMIC */
+function addComic(){
+if(!user) return;
+
+db.collection("comics").add({
+title: title.value,
+pages: pages.value
+});
+
+load();
+}
+
+/* LOAD COMICS */
+function load(){
+db.collection("comics").get().then(snap=>{
+comics = [];
+
+snap.forEach(doc=>{
+comics.push({id:doc.id,...doc.data()});
+});
+
+render();
+});
+}
+
+/* CLOUD COLLECTION */
+function loadUserCollection(){
+if(!user) return;
+
+db.collection("users")
+.doc(user)
+.collection("collection")
+.get()
+.then(snap=>{
+collection = [];
+
+snap.forEach(doc=>{
+collection.push({id:doc.id,...doc.data()});
+});
+
+render();
+});
+}
+
+/* LIKES */
+function loadLikes(){
+if(!user) return;
+
+db.collection("users")
+.doc(user)
+.collection("likes")
+.get()
+.then(snap=>{
+likes = [];
+
+snap.forEach(doc=>{
+likes.push(doc.id);
+});
+
+render();
+});
+}
+
+/* LIKE */
+function toggleLike(comic){
+
+const ref = db.collection("users")
+.doc(user)
+.collection("likes")
+.doc(comic.id);
+
+ref.get().then(doc=>{
+doc.exists ? ref.delete().then(loadLikes) : ref.set(comic).then(loadLikes);
+});
+}
+
+/* DETAIL */
+function openComic(i){
+selectedComic = comics[i];
+render();
+}
+
+function closeDetail(){
+selectedComic = null;
+render();
+}
+
+/* ADD TO COLLECTION (CLOUD SAFE) */
+function addToCollection(i){
+
+if(!user) return alert("Login nötig");
+
+const comic = comics[i];
+
+db.collection("users")
+.doc(user)
+.collection("collection")
+.doc(comic.id)
+.set({
+id: comic.id,
+title: comic.title,
+pages: comic.pages
+})
+.then(loadUserCollection);
+}
+
+/* REMOVE COLLECTION */
+function removeFromCollection(id){
+
+db.collection("users")
+.doc(user)
+.collection("collection")
+.doc(id)
+.delete()
+.then(loadUserCollection);
+}
+
+/* DELETE ADMIN */
+function deleteComic(i){
+
+if(user !== ADMIN){
+alert("Keine Rechte");
+return;
+}
+
+db.collection("comics")
+.doc(comics[i].id)
+.delete()
+.then(load);
+}
+
+/* RENDER */
+function render(){
+
+/* DETAIL VIEW */
+if(selectedComic){
+
+const isLiked = likes.includes(selectedComic.id);
+
+document.getElementById("feed").innerHTML = `
+<div class="card">
+<h2>${selectedComic.title}</h2>
+<p>📄 ${selectedComic.pages} Seiten</p>
+
+<button onclick="toggleLike(selectedComic)">
+${isLiked ? "💔 Unlike" : "❤️ Like"}
+</button>
+
+<button onclick="closeDetail()">⬅ Zurück</button>
+</div>
+`;
+
+return;
+}
+
+/* FEED */
+document.getElementById("feed").innerHTML =
+comics.length ? comics.map((c,i)=>{
+
+const inCol = collection.some(x=>x.id===c.id);
+const liked = likes.includes(c.id);
+
+return `
+<div class="card" onclick="openComic(${i})">
+<h3>${c.title}</h3>
+<p>📄 ${c.pages} Seiten</p>
+
+<p>${liked ? "❤️ Geliked" : ""}</p>
+
+${!inCol ? `
+<button onclick="event.stopPropagation(); addToCollection(${i})">➕ Sammlung</button>
+` : `
+<p style="color:#22c55e">✔ In Sammlung</p>
+`}
+
+${user===ADMIN ? `<button onclick="deleteComic(${i})">🗑 Löschen</button>` : ""}
+
+</div>
+`;
+}).join("")
+: "<p>Keine Comics vorhanden</p>";
+
+/* COLLECTION */
+let total = collection.reduce((s,c)=>s+Number(c.pages||0),0);
+
+document.getElementById("collectionList").innerHTML = `
+<h3>📖 Sammlung</h3>
+<p>📄 Gesamt: <b>${total}</b></p>
+
+${collection.length ? collection.map(c=>`
+<div class="card">
+<h3>${c.title}</h3>
+<p>${c.pages} Seiten</p>
+
+<button onclick="removeFromCollection('${c.id}')">🗑 Entfernen</button>
+</div>
+`).join("")
+: "<p>Leer</p>"}
+`;
+}
+
+load();
+
+</script>
+
+</body>
+</html>
