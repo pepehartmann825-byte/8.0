@@ -103,7 +103,7 @@ p{opacity:0.85;}
 <p id="status">Offline</p>
 
 <div id="admin" style="display:none">
-<h3>🧑‍💻 Admin Panel</h3>
+<h3>🧑‍💻 Admin</h3>
 <input id="title" placeholder="Titel">
 <input id="pages" placeholder="Seiten">
 <button onclick="addComic()">➕ Hinzufügen</button>
@@ -137,17 +137,15 @@ let selectedComic = null;
 
 const ADMIN = "pepehartmann825@gmail.com";
 
-/* NAV */
-function show(id,btn){
-document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
-document.getElementById(id).classList.add("active");
+/* 🚨 LOGIN FIX (ANTI POPUP CRASH) */
+let loggingIn = false;
 
-document.querySelectorAll(".nav button").forEach(b=>b.classList.remove("active"));
-btn.classList.add("active");
-}
-
-/* LOGIN */
 function login(){
+
+if(loggingIn) return;
+
+loggingIn = true;
+
 auth.signInWithPopup(provider)
 .then(res=>{
 user = res.user.email;
@@ -162,7 +160,13 @@ load();
 loadUserCollection();
 loadLikes();
 })
-.catch(err=>alert(err.message));
+.catch(err=>{
+console.error(err);
+alert(err.message);
+})
+.finally(()=>{
+loggingIn = false;
+});
 }
 
 /* AUTO LOGIN */
@@ -181,6 +185,15 @@ loadUserCollection();
 loadLikes();
 }
 });
+
+/* NAV */
+function show(id,btn){
+document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+document.getElementById(id).classList.add("active");
+
+document.querySelectorAll(".nav button").forEach(b=>b.classList.remove("active"));
+btn.classList.add("active");
+}
 
 /* ADD COMIC */
 function addComic(){
@@ -207,7 +220,7 @@ render();
 });
 }
 
-/* CLOUD COLLECTION */
+/* COLLECTION CLOUD */
 function loadUserCollection(){
 if(!user) return;
 
@@ -269,10 +282,10 @@ selectedComic = null;
 render();
 }
 
-/* ADD TO COLLECTION (CLOUD SAFE) */
+/* COLLECTION */
 function addToCollection(i){
 
-if(!user) return alert("Login nötig");
+if(!user) return;
 
 const comic = comics[i];
 
@@ -288,7 +301,6 @@ pages: comic.pages
 .then(loadUserCollection);
 }
 
-/* REMOVE COLLECTION */
 function removeFromCollection(id){
 
 db.collection("users")
@@ -302,10 +314,7 @@ db.collection("users")
 /* DELETE ADMIN */
 function deleteComic(i){
 
-if(user !== ADMIN){
-alert("Keine Rechte");
-return;
-}
+if(user !== ADMIN) return alert("Keine Rechte");
 
 db.collection("comics")
 .doc(comics[i].id)
@@ -316,7 +325,7 @@ db.collection("comics")
 /* RENDER */
 function render(){
 
-/* DETAIL VIEW */
+/* DETAIL */
 if(selectedComic){
 
 const isLiked = likes.includes(selectedComic.id);
@@ -362,7 +371,7 @@ ${user===ADMIN ? `<button onclick="deleteComic(${i})">🗑 Löschen</button>` : 
 </div>
 `;
 }).join("")
-: "<p>Keine Comics vorhanden</p>";
+: "<p>Keine Comics</p>";
 
 /* COLLECTION */
 let total = collection.reduce((s,c)=>s+Number(c.pages||0),0);
