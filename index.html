@@ -9,7 +9,7 @@
 body{
 margin:0;
 font-family:system-ui, Arial;
-background:linear-gradient(180deg,#0b0f14,#0a0a0a);
+background:#0a0a0a;
 color:white;
 }
 
@@ -27,34 +27,33 @@ padding:14px;
 border:none;
 background:none;
 color:#94a3b8;
-font-size:16px;
 }
 
-.nav button.active{
-color:#22c55e;
-}
+.nav button.active{color:#22c55e;}
 
-.screen{
-display:none;
-padding:18px;
-}
-
-.screen.active{
-display:block;
-}
+.screen{display:none;padding:18px;}
+.screen.active{display:block;}
 
 .card{
-background:rgba(17,24,39,0.85);
-margin:12px 0;
-padding:16px;
-border-radius:16px;
-border:1px solid rgba(255,255,255,0.05);
-cursor:pointer;
+background:#111827;
+margin:10px 0;
+padding:14px;
+border-radius:14px;
+}
+
+input{
+width:100%;
+padding:10px;
+margin:5px 0;
+border-radius:10px;
+border:none;
+background:#1f2937;
+color:white;
 }
 
 button{
 padding:8px 12px;
-margin-top:8px;
+margin-top:6px;
 border:none;
 border-radius:10px;
 background:#1f2937;
@@ -62,11 +61,9 @@ color:white;
 cursor:pointer;
 }
 
-button:hover{
-background:#374151;
-}
+button:hover{background:#374151;}
 
-p{opacity:0.85;}
+.small{opacity:0.8;font-size:13px;}
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -85,13 +82,17 @@ p{opacity:0.85;}
 
 <!-- HOME -->
 <div id="home" class="screen active">
-<h2>📚 Feed</h2>
+
+<h2>📚 Comic Feed</h2>
+
+<input id="search" placeholder="🔍 Suche..." oninput="render()">
+
 <div id="feed">Loading...</div>
 </div>
 
 <!-- COLLECTION -->
 <div id="collection" class="screen">
-<h2>📖 Sammlung</h2>
+<h2>📖 Deine Sammlung</h2>
 <div id="collectionList"></div>
 </div>
 
@@ -103,10 +104,14 @@ p{opacity:0.85;}
 <p id="status">Offline</p>
 
 <div id="admin" style="display:none">
-<h3>🧑‍💻 Admin</h3>
+<h3>🧑‍💻 Admin Panel</h3>
+
 <input id="title" placeholder="Titel">
+<input id="author" placeholder="Autor">
+<input id="publisher" placeholder="Publisher">
 <input id="pages" placeholder="Seiten">
-<button onclick="addComic()">➕ Hinzufügen</button>
+
+<button onclick="addComic()">➕ Comic erstellen</button>
 </div>
 
 </div>
@@ -118,9 +123,6 @@ const firebaseConfig = {
   apiKey: "AIzaSyD7rATqBEgOi1BMK9kI0Qr5ro825vINx_A",
   authDomain: "comic-tracker-11dce.firebaseapp.com",
   projectId: "comic-tracker-11dce",
-  storageBucket: "comic-tracker-11dce.firebasestorage.app",
-  messagingSenderId: "353269603215",
-  appId: "1:353269603215:web:6594986b906d838f0149fa"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -129,62 +131,12 @@ const db = firebase.firestore();
 const auth = firebase.auth();
 const provider = new firebase.auth.GoogleAuthProvider();
 
-let user = null;
-let comics = [];
-let collection = [];
-let likes = [];
-let selectedComic = null;
+let user=null;
+let comics=[];
+let collection=[];
+let selected=null;
 
-const ADMIN = "pepehartmann825@gmail.com";
-
-/* 🚨 LOGIN FIX (ANTI POPUP CRASH) */
-let loggingIn = false;
-
-function login(){
-
-if(loggingIn) return;
-
-loggingIn = true;
-
-auth.signInWithPopup(provider)
-.then(res=>{
-user = res.user.email;
-
-document.getElementById("status").innerText = user;
-
-if(user === ADMIN){
-document.getElementById("admin").style.display = "block";
-}
-
-load();
-loadUserCollection();
-loadLikes();
-})
-.catch(err=>{
-console.error(err);
-alert(err.message);
-})
-.finally(()=>{
-loggingIn = false;
-});
-}
-
-/* AUTO LOGIN */
-auth.onAuthStateChanged(u=>{
-if(u){
-user = u.email;
-
-document.getElementById("status").innerText = user;
-
-if(user === ADMIN){
-document.getElementById("admin").style.display = "block";
-}
-
-load();
-loadUserCollection();
-loadLikes();
-}
-});
+const ADMIN="pepehartmann825@gmail.com";
 
 /* NAV */
 function show(id,btn){
@@ -195,126 +147,121 @@ document.querySelectorAll(".nav button").forEach(b=>b.classList.remove("active")
 btn.classList.add("active");
 }
 
-/* ADD COMIC */
-function addComic(){
-if(!user) return;
+/* LOGIN FIX */
+let logging=false;
+function login(){
+if(logging)return;
+logging=true;
 
-db.collection("comics").add({
-title: title.value,
-pages: pages.value
+auth.signInWithPopup(provider)
+.then(r=>{
+user=r.user.email;
+status.innerText=user;
+
+if(user===ADMIN){
+document.getElementById("admin").style.display="block";
+}
+
+load();
+loadCollection();
+})
+.finally(()=>logging=false);
+}
+
+auth.onAuthStateChanged(u=>{
+if(u){
+user=u.email;
+status.innerText=user;
+
+if(user===ADMIN){
+document.getElementById("admin").style.display="block";
+}
+
+load();
+loadCollection();
+}
 });
 
+/* ADD COMIC */
+function addComic(){
+db.collection("comics").add({
+title:title.value,
+author:author.value,
+publisher:publisher.value,
+pages:pages.value
+});
 load();
 }
 
-/* LOAD COMICS */
+/* LOAD */
 function load(){
-db.collection("comics").get().then(snap=>{
-comics = [];
-
-snap.forEach(doc=>{
-comics.push({id:doc.id,...doc.data()});
-});
-
+db.collection("comics").get().then(s=>{
+comics=[];
+s.forEach(d=>comics.push({id:d.id,...d.data()}));
 render();
 });
-}
-
-/* COLLECTION CLOUD */
-function loadUserCollection(){
-if(!user) return;
-
-db.collection("users")
-.doc(user)
-.collection("collection")
-.get()
-.then(snap=>{
-collection = [];
-
-snap.forEach(doc=>{
-collection.push({id:doc.id,...doc.data()});
-});
-
-render();
-});
-}
-
-/* LIKES */
-function loadLikes(){
-if(!user) return;
-
-db.collection("users")
-.doc(user)
-.collection("likes")
-.get()
-.then(snap=>{
-likes = [];
-
-snap.forEach(doc=>{
-likes.push(doc.id);
-});
-
-render();
-});
-}
-
-/* LIKE */
-function toggleLike(comic){
-
-const ref = db.collection("users")
-.doc(user)
-.collection("likes")
-.doc(comic.id);
-
-ref.get().then(doc=>{
-doc.exists ? ref.delete().then(loadLikes) : ref.set(comic).then(loadLikes);
-});
-}
-
-/* DETAIL */
-function openComic(i){
-selectedComic = comics[i];
-render();
-}
-
-function closeDetail(){
-selectedComic = null;
-render();
 }
 
 /* COLLECTION */
-function addToCollection(i){
+function loadCollection(){
+if(!user)return;
 
-if(!user) return;
-
-const comic = comics[i];
-
-db.collection("users")
-.doc(user)
-.collection("collection")
-.doc(comic.id)
-.set({
-id: comic.id,
-title: comic.title,
-pages: comic.pages
-})
-.then(loadUserCollection);
+db.collection("users").doc(user)
+.collection("collection").get()
+.then(s=>{
+collection=[];
+s.forEach(d=>collection.push({id:d.id,...d.data()}));
+render();
+});
 }
 
-function removeFromCollection(id){
+/* LIKE SYSTEM */
+function toggleLike(c){
 
-db.collection("users")
-.doc(user)
+const ref=db.collection("comics")
+.doc(c.id)
+.collection("likes")
+.doc(user);
+
+ref.get().then(d=>{
+d.exists?ref.delete().then(render):ref.set({like:true}).then(render);
+});
+}
+
+/* ADD COLLECTION */
+function addToCollection(i){
+const c=comics[i];
+
+db.collection("users").doc(user)
+.collection("collection")
+.doc(c.id)
+.set(c)
+.then(loadCollection);
+}
+
+/* REMOVE */
+function removeFromCollection(id){
+db.collection("users").doc(user)
 .collection("collection")
 .doc(id)
 .delete()
-.then(loadUserCollection);
+.then(loadCollection);
+}
+
+/* SEARCH */
+function getFiltered(){
+let q=document.getElementById("search").value.toLowerCase();
+
+return comics.filter(c=>
+(c.title||"").toLowerCase().includes(q) ||
+(c.author||"").toLowerCase().includes(q) ||
+(c.publisher||"").toLowerCase().includes(q)
+);
 }
 
 /* DELETE ADMIN */
-function deleteComic(i){
-
-if(user !== ADMIN) return alert("Keine Rechte");
+function del(i){
+if(user!==ADMIN)return;
 
 db.collection("comics")
 .doc(comics[i].id)
@@ -323,72 +270,58 @@ db.collection("comics")
 }
 
 /* RENDER */
-function render(){
+async function render(){
 
-/* DETAIL */
-if(selectedComic){
-
-const isLiked = likes.includes(selectedComic.id);
-
-document.getElementById("feed").innerHTML = `
-<div class="card">
-<h2>${selectedComic.title}</h2>
-<p>📄 ${selectedComic.pages} Seiten</p>
-
-<button onclick="toggleLike(selectedComic)">
-${isLiked ? "💔 Unlike" : "❤️ Like"}
-</button>
-
-<button onclick="closeDetail()">⬅ Zurück</button>
-</div>
-`;
-
-return;
-}
+let list=getFiltered();
 
 /* FEED */
 document.getElementById("feed").innerHTML =
-comics.length ? comics.map((c,i)=>{
+await Promise.all(list.map(async (c,i)=>{
 
-const inCol = collection.some(x=>x.id===c.id);
-const liked = likes.includes(c.id);
+const snap=await db.collection("comics")
+.doc(c.id).collection("likes").get();
+
+const liked=snap.docs.some(d=>d.id===user);
 
 return `
 <div class="card" onclick="openComic(${i})">
+
 <h3>${c.title}</h3>
-<p>📄 ${c.pages} Seiten</p>
 
-<p>${liked ? "❤️ Geliked" : ""}</p>
+<p class="small">✍️ ${c.author||"-"}</p>
+<p class="small">🏢 ${c.publisher||"-"}</p>
+<p class="small">📄 ${c.pages||0} Seiten</p>
 
-${!inCol ? `
+<p>❤️ ${snap.size} Likes</p>
+
 <button onclick="event.stopPropagation(); addToCollection(${i})">➕ Sammlung</button>
-` : `
-<p style="color:#22c55e">✔ In Sammlung</p>
-`}
 
-${user===ADMIN ? `<button onclick="deleteComic(${i})">🗑 Löschen</button>` : ""}
+<button onclick="event.stopPropagation(); toggleLike(comics[${i}])">
+${liked?"💔 Unlike":"❤️ Like"}
+</button>
+
+${user===ADMIN?`<button onclick="del(${i})">🗑</button>`:""}
 
 </div>
 `;
-}).join("")
-: "<p>Keine Comics</p>";
+})).then(x=>x.join(""));
 
 /* COLLECTION */
-let total = collection.reduce((s,c)=>s+Number(c.pages||0),0);
+let total=collection.reduce((s,c)=>s+Number(c.pages||0),0);
 
-document.getElementById("collectionList").innerHTML = `
-<h3>📖 Sammlung</h3>
-<p>📄 Gesamt: <b>${total}</b></p>
+document.getElementById("collectionList").innerHTML=`
+<h3>📖 Gesamt Seiten: ${total}</h3>
 
-${collection.length ? collection.map(c=>`
+${collection.map(c=>`
 <div class="card">
 <h3>${c.title}</h3>
-<p>${c.pages} Seiten</p>
+<p>${c.author||""}</p>
+<p>${c.publisher||""}</p>
+<p>${c.pages}</p>
 
 <button onclick="removeFromCollection('${c.id}')">🗑 Entfernen</button>
 </div>
-`).join("")
-: "<p>Leer</p>"}
+`).join("")}
 `;
 }
 
