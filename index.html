@@ -132,16 +132,23 @@ const provider = new firebase.auth.GoogleAuthProvider();
 let user = null;
 let comics = [];
 let collection = [];
-let likes = [];
 let selectedComic = null;
 
 const ADMIN = "pepehartmann825@gmail.com";
 
-/* 🚨 LOGIN FIX (ANTI POPUP CRASH) */
+/* NAV */
+function show(id,btn){
+document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+document.getElementById(id).classList.add("active");
+
+document.querySelectorAll(".nav button").forEach(b=>b.classList.remove("active"));
+btn.classList.add("active");
+}
+
+/* LOGIN FIX */
 let loggingIn = false;
 
 function login(){
-
 if(loggingIn) return;
 
 loggingIn = true;
@@ -158,15 +165,9 @@ document.getElementById("admin").style.display = "block";
 
 load();
 loadUserCollection();
-loadLikes();
 })
-.catch(err=>{
-console.error(err);
-alert(err.message);
-})
-.finally(()=>{
-loggingIn = false;
-});
+.catch(err=>alert(err.message))
+.finally(()=>loggingIn = false);
 }
 
 /* AUTO LOGIN */
@@ -182,18 +183,8 @@ document.getElementById("admin").style.display = "block";
 
 load();
 loadUserCollection();
-loadLikes();
 }
 });
-
-/* NAV */
-function show(id,btn){
-document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
-document.getElementById(id).classList.add("active");
-
-document.querySelectorAll(".nav button").forEach(b=>b.classList.remove("active"));
-btn.classList.add("active");
-}
 
 /* ADD COMIC */
 function addComic(){
@@ -207,7 +198,7 @@ pages: pages.value
 load();
 }
 
-/* LOAD COMICS */
+/* LOAD */
 function load(){
 db.collection("comics").get().then(snap=>{
 comics = [];
@@ -220,7 +211,7 @@ render();
 });
 }
 
-/* COLLECTION CLOUD */
+/* COLLECTION */
 function loadUserCollection(){
 if(!user) return;
 
@@ -239,36 +230,28 @@ render();
 });
 }
 
-/* LIKES */
-function loadLikes(){
-if(!user) return;
+/* LIKE SYSTEM (GLOBAL) */
+function toggleLike(comic){
 
-db.collection("users")
-.doc(user)
+const ref = db.collection("comics")
+.doc(comic.id)
 .collection("likes")
-.get()
-.then(snap=>{
-likes = [];
+.doc(user);
 
-snap.forEach(doc=>{
-likes.push(doc.id);
-});
-
-render();
+ref.get().then(doc=>{
+doc.exists ? ref.delete().then(render) : ref.set({liked:true}).then(render);
 });
 }
 
-/* LIKE */
-function toggleLike(comic){
+/* LIKE COUNT */
+async function getLikes(id){
 
-const ref = db.collection("users")
-.doc(user)
+const snap = await db.collection("comics")
+.doc(id)
 .collection("likes")
-.doc(comic.id);
+.get();
 
-ref.get().then(doc=>{
-doc.exists ? ref.delete().then(loadLikes) : ref.set(comic).then(loadLikes);
-});
+return snap.size;
 }
 
 /* DETAIL */
@@ -284,8 +267,6 @@ render();
 
 /* COLLECTION */
 function addToCollection(i){
-
-if(!user) return;
 
 const comic = comics[i];
 
@@ -314,7 +295,7 @@ db.collection("users")
 /* DELETE ADMIN */
 function deleteComic(i){
 
-if(user !== ADMIN) return alert("Keine Rechte");
+if(user !== ADMIN) return;
 
 db.collection("comics")
 .doc(comics[i].id)
@@ -323,17 +304,23 @@ db.collection("comics")
 }
 
 /* RENDER */
-function render(){
+async function render(){
 
 /* DETAIL */
 if(selectedComic){
 
-const isLiked = likes.includes(selectedComic.id);
+const snap = await db.collection("comics")
+.doc(selectedComic.id)
+.collection("likes")
+.get();
+
+const isLiked = snap.docs.some(d=>d.id===user);
 
 document.getElementById("feed").innerHTML = `
 <div class="card">
 <h2>${selectedComic.title}</h2>
 <p>📄 ${selectedComic.pages} Seiten</p>
+<p>❤️ ${snap.size} Likes</p>
 
 <button onclick="toggleLike(selectedComic)">
 ${isLiked ? "💔 Unlike" : "❤️ Like"}
@@ -348,17 +335,23 @@ return;
 
 /* FEED */
 document.getElementById("feed").innerHTML =
-comics.length ? comics.map((c,i)=>{
+await Promise.all(comics.map(async (c,i)=>{
 
 const inCol = collection.some(x=>x.id===c.id);
-const liked = likes.includes(c.id);
+
+const snap = await db.collection("comics")
+.doc(c.id)
+.collection("likes")
+.get();
+
+const liked = snap.docs.some(d=>d.id===user);
 
 return `
 <div class="card" onclick="openComic(${i})">
 <h3>${c.title}</h3>
 <p>📄 ${c.pages} Seiten</p>
 
-<p>${liked ? "❤️ Geliked" : ""}</p>
+<p>❤️ ${snap.size} Likes</p>
 
 ${!inCol ? `
 <button onclick="event.stopPropagation(); addToCollection(${i})">➕ Sammlung</button>
@@ -366,12 +359,13 @@ ${!inCol ? `
 <p style="color:#22c55e">✔ In Sammlung</p>
 `}
 
-${user===ADMIN ? `<button onclick="deleteComic(${i})">🗑 Löschen</button>` : ""}
+<button onclick="event.stopPropagation(); toggleLike(comics[${i}])">
+${liked ? "💔 Unlike" : "❤️ Like"}
+</button>
 
 </div>
 `;
-}).join("")
-: "<p>Keine Comics</p>";
+})).then(x=>x.join(""));
 
 /* COLLECTION */
 let total = collection.reduce((s,c)=>s+Number(c.pages||0),0);
